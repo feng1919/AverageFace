@@ -16,7 +16,6 @@ extern int VIDS_FR[28];
 @interface DLibFaceFeatureItem : NSObject <NSCoding>
 
 @property (atomic, assign) CGSize image_size;
-@property (atomic, assign) CGFloat scale_ratio;
 @property (atomic, assign) CGRect face_rect;
 @property (atomic, assign) DLibFaceKeyPoints key_points;
 
@@ -32,5 +31,6 @@ extern int VIDS_FR[28];
 - (void)extractFaceFeatures;
 - (DLibFaceKeyPoints *)keyPointsRef;
 - (UIImage *)makeFaceShape;
+- (UIImage *)extractFaceArea;
 
 @end

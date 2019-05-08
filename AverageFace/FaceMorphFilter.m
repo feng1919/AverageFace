@@ -53,16 +53,14 @@ NSString *const kFaceMorphBlendFragmentShaderString = SHADER_STRING
     GLint maskUniform;
 }
 
-@property (nonatomic, assign) DLibFaceFeatures feature_le;
-@property (nonatomic, assign) DLibFaceFeatures feature_leb;
-@property (nonatomic, assign) DLibFaceFeatures feature_re;
-@property (nonatomic, assign) DLibFaceFeatures feature_reb;
-@property (nonatomic, assign) DLibFaceFeatures feature_nu;
-@property (nonatomic, assign) DLibFaceFeatures feature_nd;
-@property (nonatomic, assign) DLibFaceFeatures feature_mu;
-@property (nonatomic, assign) DLibFaceFeatures feature_md;
-@property (nonatomic, assign) CGRect face_rect;
-@property (nonatomic, assign) CGSize image_size;
+@property (nonatomic, assign) DLibFaceFeatures features_le;
+@property (nonatomic, assign) DLibFaceFeatures features_leb;
+@property (nonatomic, assign) DLibFaceFeatures features_re;
+@property (nonatomic, assign) DLibFaceFeatures features_reb;
+@property (nonatomic, assign) DLibFaceFeatures features_nu;
+@property (nonatomic, assign) DLibFaceFeatures features_nd;
+@property (nonatomic, assign) DLibFaceFeatures features_mu;
+@property (nonatomic, assign) DLibFaceFeatures features_md;
 
 //@property (nonatomic, strong) GPUImagePicture *maskImage;
 
@@ -88,48 +86,48 @@ NSString *const kFaceMorphBlendFragmentShaderString = SHADER_STRING
 
 - (void)normalizePhotos {
 
-//    CGRect s1 = _faceFeatureModel.face_rect;
-    CGRect s2 = _faceFeatureMine.face_rect;
-    CGFloat scale = 1.0f;//s1.size.width/s2.size.width;//_faceFeatureModel.scale_ratio/_faceFeatureMine.scale_ratio;
+    CGSize s1 = _faceFeatureModel.face_rect.size;
+    CGSize s2 = _faceFeatureMine.face_rect.size;
+    
+    CGVector scale = CGVectorMake(s1.width/s2.width, s1.height/s2.height);
+    
+    _features_le = _faceFeatureMine.features_le;
+    NormalizeFeature(&_features_le, &scale);
 
-    _face_rect = CGRectMake(s2.origin.x * scale, s2.origin.y * scale, s2.size.width * scale, s2.size.height * scale);
-    _image_size = CGSizeMake(_faceFeatureMine.image_size.width * scale, _faceFeatureMine.image_size.height * scale);
+    _features_re = _faceFeatureMine.features_re;
+    NormalizeFeature(&_features_re, &scale);
 
-    _feature_le = _faceFeatureMine.features_le;
-    NormalizeFeature(&_feature_le, scale);
+    _features_leb = _faceFeatureMine.features_leb;
+    NormalizeFeature(&_features_leb, &scale);
 
-    _feature_re = _faceFeatureMine.features_re;
-    NormalizeFeature(&_feature_re, scale);
+    _features_reb = _faceFeatureMine.features_reb;
+    NormalizeFeature(&_features_reb, &scale);
 
-    _feature_leb = _faceFeatureMine.features_leb;
-    NormalizeFeature(&_feature_leb, scale);
+    _features_nu = _faceFeatureMine.features_nu;
+    NormalizeFeature(&_features_nu, &scale);
 
-    _feature_reb = _faceFeatureMine.features_reb;
-    NormalizeFeature(&_feature_reb, scale);
+    _features_nd = _faceFeatureMine.features_nd;
+    NormalizeFeature(&_features_nd, &scale);
 
-    _feature_nu = _faceFeatureMine.features_nu;
-    NormalizeFeature(&_feature_nu, scale);
+    _features_mu = _faceFeatureMine.features_mu;
+    NormalizeFeature(&_features_mu, &scale);
 
-    _feature_nd = _faceFeatureMine.features_nd;
-    NormalizeFeature(&_feature_nd, scale);
-
-    _feature_mu = _faceFeatureMine.features_mu;
-    NormalizeFeature(&_feature_mu, scale);
-
-    _feature_md = _faceFeatureMine.features_md;
-    NormalizeFeature(&_feature_md, scale);
+    _features_md = _faceFeatureMine.features_md;
+    NormalizeFeature(&_features_md, &scale);
 }
 
-void NormalizeFeature(DLibFaceFeatures *features, CGFloat scale) {
-    features->feature_point.x *= scale;
-    features->feature_point.y *= scale;
+void NormalizeFeature(DLibFaceFeatures *features, CGVector *scale) {
+    features->feature_point.x *= scale->dx;
+    features->feature_point.y *= scale->dy;
     for (int i = 0; i < features->num_of_features; i ++) {
-        features->feature_list[i].dx *= scale;
-        features->feature_list[i].dy *= scale;
+        features->feature_list[i].dx *= scale->dx;
+        features->feature_list[i].dy *= scale->dy;
     }
 }
 
-void ApplyFeatures(DLibFaceFeatures *model_features, DLibFaceFeatures *mine_features,
+void ApplyFeatures(CGSize *image_size,
+                   DLibFaceFeatures *model_features,
+                   DLibFaceFeatures *mine_features,
                    int *vids, CGFloat intensity, point *np_list) {
     CGPoint cp = model_features->feature_point;
     for (int i = 0; i < model_features->num_of_features; i ++) {
@@ -138,6 +136,8 @@ void ApplyFeatures(DLibFaceFeatures *model_features, DLibFaceFeatures *mine_feat
         int vid = vids[i];
         np_list[vid].x = (v1.dx+cp.x)+intensity*(v2.dx-v1.dx);
         np_list[vid].y = (v1.dy+cp.y)+intensity*(v2.dy-v1.dy);
+        np_list[vid].x /= image_size->width;
+        np_list[vid].y /= image_size->height;
     }
 }
 
@@ -256,14 +256,16 @@ void CalculateFaceTextureCoordinate(point *np_list, int num_of_points, CGRect fa
     DLibFaceFeatures features_mu = _faceFeatureModel.features_mu;
     DLibFaceFeatures features_md = _faceFeatureModel.features_md;
     
-    ApplyFeatures(&features_le,   &_feature_le,   DLibDefaultFaceStruct.VIDS_LE,  _shapeIntensity, np_list);
-    ApplyFeatures(&features_leb,  &_feature_leb,  DLibDefaultFaceStruct.VIDS_LEB, _shapeIntensity, np_list);
-    ApplyFeatures(&features_re,   &_feature_re,   DLibDefaultFaceStruct.VIDS_RE,  _shapeIntensity, np_list);
-    ApplyFeatures(&features_reb,  &_feature_reb,  DLibDefaultFaceStruct.VIDS_REB, _shapeIntensity, np_list);
-    ApplyFeatures(&features_nu,   &_feature_nu,   DLibDefaultFaceStruct.VIDS_NU,  _shapeIntensity, np_list);
-    ApplyFeatures(&features_nd,   &_feature_nd,   DLibDefaultFaceStruct.VIDS_ND,  _shapeIntensity, np_list);
-    ApplyFeatures(&features_mu,   &_feature_mu,   DLibDefaultFaceStruct.VIDS_MU,  _shapeIntensity, np_list);
-    ApplyFeatures(&features_md,   &_feature_md,   DLibDefaultFaceStruct.VIDS_MD,  _shapeIntensity, np_list);
+    CGSize image_size = _faceFeatureModel.image_size;
+    
+    ApplyFeatures(&image_size, &features_le,   &_features_le,   DLibDefaultFaceStruct.VIDS_LE,  _shapeIntensity, np_list);
+    ApplyFeatures(&image_size, &features_leb,  &_features_leb,  DLibDefaultFaceStruct.VIDS_LEB, _shapeIntensity, np_list);
+    ApplyFeatures(&image_size, &features_re,   &_features_re,   DLibDefaultFaceStruct.VIDS_RE,  _shapeIntensity, np_list);
+    ApplyFeatures(&image_size, &features_reb,  &_features_reb,  DLibDefaultFaceStruct.VIDS_REB, _shapeIntensity, np_list);
+    ApplyFeatures(&image_size, &features_nu,   &_features_nu,   DLibDefaultFaceStruct.VIDS_NU,  _shapeIntensity, np_list);
+    ApplyFeatures(&image_size, &features_nd,   &_features_nd,   DLibDefaultFaceStruct.VIDS_ND,  _shapeIntensity, np_list);
+    ApplyFeatures(&image_size, &features_mu,   &_features_mu,   DLibDefaultFaceStruct.VIDS_MU,  _shapeIntensity, np_list);
+    ApplyFeatures(&image_size, &features_md,   &_features_md,   DLibDefaultFaceStruct.VIDS_MD,  _shapeIntensity, np_list);
     
     GLfloat *imageVertices = (GLfloat *)malloc(d->ntriangles * 6 * sizeof(GLfloat));
     for (int i = 0; i < d->ntriangles; i++) {
@@ -403,6 +405,83 @@ void CalculateFaceTextureCoordinate(point *np_list, int num_of_points, CGRect fa
 
 - (void)informTargetsAboutNewFrameAtTime:(CMTime)frameTime {
     [super informTargetsAboutNewFrameAtTime:frameTime];
+}
+
+typedef struct PNode {
+    struct PNode *next;
+    int val;
+}PNode;
+
+PNode *ListsMergeSort(PNode **lists, int num_of_list) {
+    
+    if (num_of_list <= 0) {
+        return NULL;
+    }
+    
+    if (num_of_list == 1) {
+        return lists[0];
+    }
+    
+    PNode *head_node = NULL;
+    PNode *move_node = NULL;
+    PNode **min_heap = malloc(num_of_list * sizeof(PNode **));
+    
+    for (int i = 0; i < num_of_list; i ++) {
+        min_heap[i] = lists[i];
+    }
+    int num_of_nodes = num_of_list;
+    
+    MinHeapSort(min_heap, num_of_nodes);
+    head_node = min_heap[0];
+    move_node = min_heap[0];
+    
+    while (num_of_nodes > 1) {
+        
+        move_node->next = min_heap[0];
+        move_node = min_heap[0];
+        
+        if (move_node->next != NULL) {
+            min_heap[0] = move_node->next;
+        }
+        else {
+            CutHead(min_heap, num_of_nodes);
+            num_of_nodes--;
+        }
+        
+        MinHeapSort(min_heap, num_of_nodes);
+    }
+    
+    free(min_heap);
+    return head_node;
+}
+
+void SwapNodeVal(PNode *n1, PNode *n2) {
+    int tmp = n1->val;
+    n1->val = n2->val;
+    n2->val = tmp;
+}
+
+void MinHeapSort(PNode **nodes, int num_of_nodes) {
+    for (int i = 0; i < num_of_nodes>>1; i ++) {
+        PNode *n = nodes[i];
+        PNode *left = nodes[2*i+1];
+        if (n->val > left->val) {
+            SwapNodeVal(n, left);
+        }
+        
+        if (num_of_nodes > 2*(i+1)) {
+            PNode *right = nodes[2*(i+1)];
+            if (n->val > right->val) {
+                SwapNodeVal(n, right);
+            }
+        }
+    }
+}
+
+void CutHead(PNode **nodes, int num_of_nodes) {
+    for (int i = 0; i < num_of_nodes-1; i++) {
+        nodes[i] = nodes[i+1];
+    }
 }
 
 @end

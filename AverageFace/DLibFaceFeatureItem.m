@@ -30,7 +30,7 @@ DLibFaceStruct DLibDefaultFaceStruct =
     {27,28,29,30},
     {31,32,33,34,35},
     {48,49,50,51,52,53,54,60,61,62,63,64},
-    {54,55,56,57,58,59,48,64,65,66,67,60}
+    {54,55,56,57,58,59,48,64,65,66,67,60},
 };
 
 int VIDS_FR[28] = {
@@ -82,22 +82,15 @@ int VIDS_FR[28] = {
 
 - (void)extractFaceFeatures {
     
-    CGPoint p1 = _key_points.points[27];
-    CGPoint p2 = _key_points.points[30];
-    CGFloat dx = p1.x - p2.x;
-    CGFloat dy = p1.y - p2.y;
-    _scale_ratio = sqrt(dx*dx+dy*dy);
-    
-    CGFloat width = _image_size.width;
-    CGFloat height = _image_size.height;
+    if (CGRectGetWidth(_face_rect) < 10.0f || CGRectGetHeight(_face_rect) < 10.0f) {
+        return;
+    }
     
     CGPoint *kp = malloc(_key_points.num_of_points * sizeof(CGPoint));
-    if (_image_size.width > 10.0f && _image_size.height > 10.0f) {
-        for (int i = 0; i < _key_points.num_of_points; i ++) {
-            CGPoint p = _key_points.points[i];
-            kp[i].x = MIN(MAX(p.x, 0.0f), width-1.0f) / width;
-            kp[i].y = MIN(MAX(p.y, 0.0f), height-1.0f) / height;
-        }
+    for (int i = 0; i < _key_points.num_of_points; i ++) {
+        CGPoint p = _key_points.points[i];
+        kp[i].x = p.x;//MIN(MAX(p.x, 0.0f), width-1.0f) / width;
+        kp[i].y = p.y;//MIN(MAX(p.y, 0.0f), height-1.0f) / height;
     }
     
     ExtractFeaturesFromFace(kp, DLibDefaultFaceStruct.VIDS_LE, 6, &_features_le);
@@ -167,6 +160,51 @@ int VIDS_FR[28] = {
     bezier_points = NULL;
     
     return bezierPath;
+}
+
+- (UIImage *)extractFaceArea {
+    
+    CGFloat image_width = _image_size.width;
+    CGFloat image_height = _image_size.height;
+    int num_of_points = 28;
+    
+    CGPoint *bezier_points = malloc(num_of_points * sizeof(CGPoint));
+    for (int i = 0; i < num_of_points; i++) {
+        int vid = VIDS_FR[i];
+        CGPoint p = _key_points.points[vid];
+        p.y = image_height - p.y;
+        bezier_points[i] = p;
+    }
+    
+    UIBezierPath *bezierPath = [UIBezierPath bezierPath];
+    [bezierPath moveToPoint:bezier_points[0]];
+    for (int i = 1; i < num_of_points; i++) {
+        [bezierPath addLineToPoint:bezier_points[i]];
+    }
+    
+    free(bezier_points);
+    bezier_points = NULL;
+    
+    
+    static CGColorSpaceRef colorSpace = NULL;
+    if (colorSpace == NULL) {
+        colorSpace = CGColorSpaceCreateDeviceRGB();
+    }
+    
+    CGContextRef context = CGBitmapContextCreate(NULL, image_width, image_height, 8, image_width*4, colorSpace, kCGImageAlphaPremultipliedLast);
+    CGContextSetFillColorWithColor(context, [UIColor blackColor].CGColor);
+    CGContextFillRect(context, CGContextGetClipBoundingBox(context));
+    
+    CGContextAddPath(context, [bezierPath CGPath]);
+    CGContextSetFillColorWithColor(context, [UIColor whiteColor].CGColor);
+    CGContextFillPath(context);
+    
+    CGImageRef imageRef = CGBitmapContextCreateImage(context);
+    UIImage *image = [UIImage imageWithCGImage:imageRef];
+    CGImageRelease(imageRef);
+    CGContextRelease(context);
+    
+    return image;
 }
 
 void ExtractFeaturesFromFace(CGPoint *key_points, int *vids, int num_of_vids, DLibFaceFeatures *fout) {
